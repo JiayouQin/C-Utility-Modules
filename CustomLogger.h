@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "spdlog/spdlog.h"
 #include "spdlog/sinks/basic_file_sink.h"
@@ -12,7 +12,7 @@ class CustomLogger
 {
 
 public:
-    double verion = 0.90;
+    double verion = 0.95;
 #if CONSOLE_MODE == false
     GUIUpdater* updater;
     const char* strbuf = {0}; //如果需要缓存可使用
@@ -23,18 +23,17 @@ private:
     using format_string_t = fmt::format_string<Args...>;
     spdlog::logger* logger;
     std::string formattedString;
-    bool verbose;
+    static bool verbose;
 
 public:
     CustomLogger(CustomLogger const&) = delete;
     void operator=(CustomLogger const&) = delete;
     //如果需要同步更新图形界面需要传入更新器(GUIUpdater)指针
-    static CustomLogger& get(void* updater = NULL) {
-        static CustomLogger instance(updater);
+    static CustomLogger& get() {
+        static CustomLogger instance;
         return instance;
     }
 
-    //注意实际上调用Debug
     template<typename... Args> void trace(format_string_t<Args...> fmt, Args &&... args) {
         logger->trace(fmt, std::forward<Args>(args)...);
         #if UPDATE_QT_MESSAGE == true
@@ -83,14 +82,14 @@ public:
     }
 
 private:
-    CustomLogger(void* updater = NULL, bool verbose = false) {
+    CustomLogger() {
         auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>("logs/traceback.txt", true);
 #if CONSOLE_MODE == true
         auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
         logger = new spdlog::logger("log", { file_sink, console_sink });
 #else   
         logger = new spdlog::logger("log", { file_sink });
-        this->updater = (GUIUpdater*)updater;
+        this->updater = &GUIUpdater::get();
 #endif
         if (verbose) {
             //TODO 未设置文件和控制台分别使用不同等级
@@ -100,3 +99,4 @@ private:
 
 };
 
+bool CustomLogger::verbose{ false };
