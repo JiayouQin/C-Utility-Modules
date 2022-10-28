@@ -1,10 +1,12 @@
-﻿#pragma once
+#pragma once
 #include "MvCameraControl.h"
 #include <iostream>
 #include <chrono>
 #include <ctime> 
 #include <sstream>
 #include <numeric>
+#include <map>
+#include "CustomLogger.h"
 typedef unsigned char uchar;
 typedef unsigned int uint;
 
@@ -33,10 +35,10 @@ public:
     MV_FRAME_OUT frame = { 0 };
     std::string serialNumber = ""; //该实例根据序列号连接，如果为空则连接第一个相机
 
+
     //注意多相机如果给空序列号会导致无法连接
-    CamClass(CustomLogger* logger, std::string serialNumber ="") {
+    CamClass(std::string serialNumber ="") {
         this->serialNumber = serialNumber;
-        this->logger = logger;
         listDevices();
         printDeviceInfo();
         MV_CC_RegisterExceptionCallBack(handle, &expCallback, &logger);
@@ -71,7 +73,7 @@ public:
 private:
     std::map<std::string, int> serialRef = {};
     std::vector<void*> ptrArray = { &logger, this };
-    CustomLogger* logger;
+    CustomLogger &logger = CustomLogger::get();
     std::map<bool, std::string> retRef = { {1,"成功"}, {0,"失败"} };
     std::map<int, std::string> modeRef = { {0,"关闭"}, {1,"开启"} };
     std::map<int, std::string> sourceRef = { {0,"LINE0"}, {1,"LINE1"}, {2,"LINE2"}, {3,"LINE3"}, {4,"COUNTER0"}, {7,"软触发"}, {8,"变频器"} };
@@ -89,8 +91,6 @@ public:
         MV_CC_SetHeight(handle, height);
     }
 
-
-
     int deviceConnected() {
         return MV_CC_IsDeviceConnected(this->handle);
     }
@@ -105,16 +105,16 @@ public:
 
     void setTriggerMode(int mode,int source) {
         if (!sourceRef.count(source) or !modeRef.count(mode)) { 
-            logger->warn("设置触发模式失败");
+            logger.warn("设置触发模式失败");
             return; 
         }
         std::string info1 = retRef[setValue("TriggerMode",mode)==0];
         std::string info2 = retRef[MV_CC_SetEnumValue(this->handle, "TriggerSource", source) == 0];
-        logger->info("\n设置触发模式: {} {} \n设置触发源: {} {}", modeRef[mode], info1, sourceRef[source],info2);
+        logger.info("\n设置触发模式: {} {} \n设置触发源: {} {}", modeRef[mode], info1, sourceRef[source],info2);
     }
 
     void setExposureTime(int num) {
-        logger->info("设置曝光时间： {} {}", num, retRef[MV_CC_SetFloatValue(this->handle, "ExposureTime", (float)num) == 0]);
+        logger.info("设置曝光时间： {} {}", num, retRef[MV_CC_SetFloatValue(this->handle, "ExposureTime", (float)num) == 0]);
     }
     
     float getExposureTime() {
@@ -125,14 +125,14 @@ public:
 
     void printDeviceInfo() {
         MV_CC_DEVICE_INFO_LIST stDeviceList = this->stDeviceList;
-        logger->info("搜寻设备中...");
-        if (stDeviceList.nDeviceNum == 0) { logger->info("无设备"); }
+        logger.info("搜寻设备中...");
+        if (stDeviceList.nDeviceNum == 0) { logger.info("无设备"); }
         for (unsigned int i = 0; i < stDeviceList.nDeviceNum; i++)
         {
-            logger->info("[摄像头 {}]:", i);
+            logger.info("[摄像头 {}]:", i);
             MV_CC_DEVICE_INFO* pDeviceInfo = stDeviceList.pDeviceInfo[i];
             if (NULL == pDeviceInfo) {
-                logger->warn("pstMVDevInfo 为空指针");
+                logger.warn("pstMVDevInfo 为空指针");
                 break;
             }
             if (pDeviceInfo->nTLayerType == MV_GIGE_DEVICE) {
@@ -141,16 +141,16 @@ public:
                 int nIp3 = ((pDeviceInfo->SpecialInfo.stGigEInfo.nCurrentIp & 0x0000ff00) >> 8);
                 int nIp4 = (pDeviceInfo->SpecialInfo.stGigEInfo.nCurrentIp & 0x000000ff);
                 // print current ip and user defined name
-                logger->info("IP地址:{}.{}.{}.{}\n", nIp1, nIp2, nIp3, nIp4);
-                logger->info("自定义名称: {}", pDeviceInfo->SpecialInfo.stGigEInfo.chUserDefinedName);
+                logger.info("IP地址:{}.{}.{}.{}\n", nIp1, nIp2, nIp3, nIp4);
+                logger.info("自定义名称: {}", pDeviceInfo->SpecialInfo.stGigEInfo.chUserDefinedName);
             }
             else if (pDeviceInfo->nTLayerType == MV_USB_DEVICE) {
-                logger->info("自定义名称: {}", pDeviceInfo->SpecialInfo.stUsb3VInfo.chUserDefinedName);
-                logger->info("序列号: {}", pDeviceInfo->SpecialInfo.stUsb3VInfo.chSerialNumber);
-                logger->info("设备数字: {}", pDeviceInfo->SpecialInfo.stUsb3VInfo.nDeviceNumber);
+                logger.info("自定义名称: {}", pDeviceInfo->SpecialInfo.stUsb3VInfo.chUserDefinedName);
+                logger.info("序列号: {}", pDeviceInfo->SpecialInfo.stUsb3VInfo.chSerialNumber);
+                logger.info("设备数字: {}", pDeviceInfo->SpecialInfo.stUsb3VInfo.nDeviceNumber);
             }
             else{
-                logger->error("设备不支持");
+                logger.error("设备不支持");
             }
         }
     };
@@ -158,41 +158,41 @@ public:
     //TODO 目前只兼容单相机
     int openDevice(int camIndex = 0, bool manualMode = false) {
 
-        logger->info("搜寻并尝试打开相机：{} ", serialNumber);
+        logger.info("搜寻并尝试打开相机：{} ", serialNumber);
         if (serialNumber == "") {}
         else if (serialRef.count(serialNumber))
         {
             camIndex = serialRef[serialNumber];
         }
         else {
-            logger->warn("未找到该序列号设备： {}", serialNumber);
-            logger->info("搜寻到设备:");
+            logger.warn("未找到该序列号设备： {}", serialNumber);
+            logger.info("搜寻到设备:");
 
             std::map<std::string, int>::iterator i;
             for (i = serialRef.begin(); i!= serialRef.end(); i++)
             {
-                logger->info(i->first);
+                logger.info(i->first);
             }
             return -1;
         }
         if (deviceIsOpen) {
-            logger->info("已打开设备");
+            logger.info("已打开设备");
             return 0;
         }
-        logger->info("搜寻设备中...");
+        logger.info("搜寻设备中...");
         memset(&this->stDeviceList, 0, sizeof(MV_CC_DEVICE_INFO_LIST));
         int nRet = MV_CC_EnumDevices(MV_GIGE_DEVICE | MV_USB_DEVICE, &this->stDeviceList);
 
         if (MV_OK != nRet) {
-            logger->info("搜寻失败: {}", nRet);
+            logger.info("搜寻失败: {}", nRet);
             return nRet;
         }
         int devices = this->stDeviceList.nDeviceNum;                               
-        if (devices < 1) { logger->warn("无设备");   return -1; }
+        if (devices < 1) { logger.warn("无设备");   return -1; }
         
         nRet = MV_CC_CreateHandle(&handle, this->stDeviceList.pDeviceInfo[camIndex]);
         if (MV_OK != nRet){
-            logger->warn("无法建立句柄: {}", nRet);
+            logger.warn("无法建立句柄: {}", nRet);
             return nRet;
         }
         if (manualMode) {return 0;}
@@ -203,33 +203,33 @@ public:
 
         nRet = MV_CC_OpenDevice(handle);//open device
         if (MV_OK != nRet){
-            logger->warn("无法打开设备: {} ,{}",serialNumber, nRet);
+            logger.warn("无法打开设备: {} ,{}",serialNumber, nRet);
             return nRet;
         }
         deviceIsOpen = true;
         if (this->stDeviceList.pDeviceInfo[camIndex]->nTLayerType == MV_GIGE_DEVICE)
         {
             int nPacketSize = MV_CC_GetOptimalPacketSize(handle);
-            if (nPacketSize < 0) { logger->warn("无法获取数据包大小: {}", nPacketSize); }
+            if (nPacketSize < 0) { logger.warn("无法获取数据包大小: {}", nPacketSize); }
             nRet = MV_CC_SetIntValue(handle, "GevSCPSPacketSize", nPacketSize);
-            if (nRet != MV_OK) { logger->warn("无法设置数据包大小: {}",nRet); }
+            if (nRet != MV_OK) { logger.warn("无法设置数据包大小: {}",nRet); }
         }
         MVCC_INTVALUE stParam;
         memset(&stParam, 0, sizeof(MVCC_INTVALUE));
         nRet = MV_CC_GetIntValue(handle, "PayloadSize", &stParam);
 
         if (MV_OK != nRet){
-            logger->warn("Get PayloadSize fail! nRet {}", nRet);
+            logger.warn("Get PayloadSize fail! nRet {}", nRet);
             return nRet;
         }
         this -> g_nPayloadSize = stParam.nCurValue;
         //send grab command to camera
         nRet = MV_CC_SetEnumValue(handle, "PixelFormat", PixelType_Gvsp_BGR8_Packed); //!!!注意这里需要根据设备写入
-        if (MV_OK != nRet)  {logger->warn("无法设置像素格式 {}", nRet);}
+        if (MV_OK != nRet)  {logger.warn("无法设置像素格式 {}", nRet);}
         nRet = MV_CC_StartGrabbing(handle);
-        if (MV_OK != nRet)  {logger->error("开启捕捉失败"); return nRet;}
+        if (MV_OK != nRet)  {logger.error("开启捕捉失败"); return nRet;}
         deviceIsgrabbing = true;
-        logger->info("成功打开设备 {}",serialNumber);
+        logger.info("成功打开设备 {}",serialNumber);
         return 0;
     };
 
@@ -237,7 +237,7 @@ public:
     int startGrabbing() {
         int nRet = MV_CC_StartGrabbing(this->handle);
         if (MV_OK != nRet) {
-            logger->error("开启捕捉失败 {}", nRet);
+            logger.error("开启捕捉失败 {}", nRet);
             return nRet;
         }
         return 0;
@@ -246,7 +246,7 @@ public:
     int stopGrabbing() {
         int nRet = MV_CC_StopGrabbing(this -> handle);
         if (MV_OK != nRet){
-            logger->warn("停止捕捉失败 {}", nRet);
+            logger.warn("停止捕捉失败 {}", nRet);
             return nRet;
         }
         return 0;
@@ -254,17 +254,17 @@ public:
 
     int terminateCam() {
         int nRet = MV_CC_StopGrabbing(this -> handle);  // Stop grab image
-        if (MV_OK != nRet) { logger->warn("无法停止捕捉: {}", nRet); }
+        if (MV_OK != nRet) { logger.warn("无法停止捕捉: {}", nRet); }
         nRet = MV_CC_CloseDevice(this->handle);   // Close device
-        if (MV_OK != nRet) { logger->warn("无法关闭相机设备: {}", nRet); }
+        if (MV_OK != nRet) { logger.warn("无法关闭相机设备: {}", nRet); }
         nRet = MV_CC_DestroyHandle(this->handle); // Destroy handle
-        if (MV_OK != nRet) { logger->warn("无法相机销毁句柄: {}", nRet); }
+        if (MV_OK != nRet) { logger.warn("无法相机销毁句柄: {}", nRet); }
         return nRet;
     };
 
     int setHeartbeat(int val) {
         int ret = MV_CC_SetHeartBeatTimeout(this->handle, val);//单位ms
-        if (ret != MV_OK){  logger->warn("设置心跳失败: {}", ret);}
+        if (ret != MV_OK){  logger.warn("设置心跳失败: {}", ret);}
         return ret;
     }
 
@@ -279,43 +279,66 @@ public:
         return MV_CC_SetEnumValue(this->handle, valueName, value);
     }
 
-#if USE_OPENCV
-    int grabImage(cv::Mat& image, int timeout = 1000) {
+    int grabImageRaw(char* image,int&h,int&w, int timeout = 1000) {
         int nRet;
         if (!(deviceIsOpen && deviceIsgrabbing)) {
-            logger->warn("设备未打开");
+            logger.warn("设备未打开");
             return 1;
         }
         nRet = this->getImageBuffer(&this->frame, 1000);
         if (nRet != MV_OK) {
-            logger->trace("无图像数据或数据错误: {}", nRet);
-            return nRet;
+            logger.trace("无图像数据或数据错误: {}", nRet);
+            return 2;
         }
-        nRet = Convert2Mat(&frame.stFrameInfo, frame.pBufAddr, image);
-        if (nRet != MV_OK) { logger->error("相机数据转换到Mat格式错误"); }
+        h = frame.stFrameInfo.nHeight;
+        w = frame.stFrameInfo.nWidth;
+        image = new char[h*w];
+        memcpy(image,frame.pBufAddr,h*w/4);
         nRet = this->freeImageBuffer(&this->frame);
         if (nRet != MV_OK) {
-            logger->warn("清空缓存出错: {}", nRet);
+            logger.warn("清空缓存出错: {}", nRet);
             return nRet;
         }
         return nRet;
     };
 
-#elif USE_HALCON
+#if USE_OPENCV
+    int grabImage(cv::Mat& image, int timeout = 1000) {
+        int nRet;
+        if (!(deviceIsOpen && deviceIsgrabbing)) {
+            logger.warn("设备未打开");
+            return 1;
+        }
+        nRet = this->getImageBuffer(&this->frame, 1000);
+        if (nRet != MV_OK) {
+            logger.trace("无图像数据或数据错误: {}", nRet);
+            return nRet;
+        }
+        nRet = Convert2Mat(&frame.stFrameInfo, frame.pBufAddr, image);
+        if (nRet != MV_OK) { logger.error("相机数据转换到Mat格式错误"); }
+        nRet = this->freeImageBuffer(&this->frame);
+        if (nRet != MV_OK) {
+            logger.warn("清空缓存出错: {}", nRet);
+            return nRet;
+        }
+        return nRet;
+    };
+#endif
+#if USE_HALCON
     //抓取Halcon用图像 
     int grabImage(HObject* objPtr,int timeout = 1000) {
         if (!deviceConnected()) {
-            logger->warn("设备未连接!");
+            logger.warn("设备未连接!");
             return 1;
         }
         int ret;
         if (!(deviceIsOpen && deviceIsgrabbing)) {
-            logger->warn("设备未打开");
+            logger.warn("设备未打开");
             return 1;
         }
         ret = this->getImageBuffer(&this->frame, 1000);
         if (ret != MV_OK) {
-            logger->error("图像数据错误: {}", ret);
+            logger.error("图像数据错误: {}", ret);
             return ret;
         }
         if (frame.pBufAddr == NULL) {
@@ -331,9 +354,9 @@ public:
         else { 
             ret = mono8toHObject(objPtr, h, w, frame.pBufAddr); 
         }
-        if (ret != MV_OK) { logger->error("相机数据转换到HObject格式错误"); }
+        if (ret != MV_OK) { logger.error("相机数据转换到HObject格式错误"); }
         ret = this->freeImageBuffer(&this->frame);
-        if (ret != MV_OK) {logger->warn("清空缓存出错: {}", ret);}
+        if (ret != MV_OK) {logger.warn("清空缓存出错: {}", ret);}
         return ret;
     }
 #endif
@@ -342,8 +365,8 @@ protected:
     //TODO 需要完善该功能
     static void expCallback(unsigned int messageType, void* expCallbackptr) {
 
-        CustomLogger* logger = (CustomLogger*)expCallbackptr;
-        logger->info("相机运行中遇到错误");
+        //CustomLogger* logger = (CustomLogger*)expCallbackptr;
+        CustomLogger::get().info("相机运行中遇到错误");
         
     }
 
@@ -352,7 +375,7 @@ protected:
     void enumDevice() {
         memset(&this->stDeviceList, 0, sizeof(MV_CC_DEVICE_INFO_LIST));
         int nRet = MV_CC_EnumDevices(MV_GIGE_DEVICE | MV_USB_DEVICE, &this->stDeviceList);
-        if (MV_OK != nRet) { logger->warn("无法读取数据 {}", nRet); }
+        if (MV_OK != nRet) { logger.warn("无法读取数据 {}", nRet); }
     }
 
     int RGB2BGR(uchar* pRgbData, uint width, uint height) {
@@ -410,14 +433,14 @@ protected:
             return 0;
         }
         else{
-            logger->error("相机像素格式不支持");
+            logger.error("相机像素格式不支持");
             return 1;
         }if (image.data == NULL) { return 1; }
         image.release();
         return true;
     };
-
-#elif USE_HALCON
+#endif
+#if USE_HALCON
 
     int splitRGB(uchar* pRgbData, uint width, uint height) {
         if (NULL == pRgbData) { return MV_E_PARAMETER; }
