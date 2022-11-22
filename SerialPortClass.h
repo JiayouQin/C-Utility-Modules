@@ -1,4 +1,6 @@
 #pragma once
+#define INIT_POS 0x010600257530  //????
+#define NOMINMAX //be wary of evil windows.h
 #include <CRC16RTU.h>
 #include <windows.h>
 #include "ParamsLoader.h"
