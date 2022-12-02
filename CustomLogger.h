@@ -1,3 +1,8 @@
+﻿#pragma warning(disable : 4996)
+#ifndef CONSOLE_MODE
+#define CONSOLE_MODE true
+#endif
+
 #pragma once
 
 #include "spdlog/spdlog.h"
@@ -12,7 +17,7 @@ class CustomLogger
 {
 
 public:
-    double verion = 0.95;
+    double verion = 0.90;
 #if CONSOLE_MODE == false
     GUIUpdater* updater;
     const char* strbuf = {0}; //如果需要缓存可使用
@@ -40,7 +45,7 @@ public:
         if (updater == NULL) { return; }
         if (!verbose) { return; }
         std::string message = "[追踪] "+fmt::format(fmt, std::forward<Args>(args)...);
-        updater->updateMessage(message.c_str());
+        updater->updateMessage(message.c_str(),0);
         #endif
     }
 
@@ -50,7 +55,7 @@ public:
         if (updater == NULL) { return; }
         if (!verbose) { return; }
         std::string message = "[DEBUG] " + fmt::format(fmt, std::forward<Args>(args)...);
-        updater->updateMessage(message.c_str());
+        updater->updateMessage(message.c_str(),1);
 #endif
     }
 
@@ -59,7 +64,7 @@ public:
         #if UPDATE_QT_MESSAGE == true 
         if (updater == NULL) { return; }
         std::string message = "[消息] " + fmt::format(fmt, std::forward<Args>(args)...);
-        updater->updateMessage(message.c_str());
+        updater->updateMessage(message.c_str(),2);
         #endif
     }
 
@@ -68,7 +73,7 @@ public:
         #if UPDATE_QT_MESSAGE == true 
         if (updater == NULL) { return; }
         std::string message = "[警告] " + fmt::format(fmt, std::forward<Args>(args)...);
-        updater->updateMessage(message.c_str());
+        updater->updateMessage(message.c_str(),3);
         #endif
     }
 
@@ -77,7 +82,7 @@ public:
         #if UPDATE_QT_MESSAGE == true 
         if (updater == NULL) { return; }
         std::string message = "[错误] " + fmt::format(fmt, std::forward<Args>(args)...);
-        updater->updateMessage(message.c_str());
+        updater->updateMessage(message.c_str(),4);
         #endif
     }
 

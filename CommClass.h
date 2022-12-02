@@ -1,6 +1,5 @@
 ﻿#define WIN32_LEAN_AND_MEAN
 
-#include <windows.h>
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <stdlib.h>
@@ -18,31 +17,33 @@ private:
     struct addrinfo* result = NULL, * ptr = NULL, hints;
     const char* defaultMessage = "this is a test";
     int bufLength = 512;
-    const char* ip = "127.0.0.1";
-    const char* port =  "8081";
-    CustomLogger* logger;
-
+    const char* ip;
+    const char* port;
+    CustomLogger& logger = CustomLogger::get();
+    bool connected = false;
+    bool* runProcess = 0;
 public:
     char recvbuf[256] = "";
+    void(__stdcall* errCallback)() = 0;
+    void(__stdcall* connectCallback)() = 0;
 
-public:
-    CommClass(CustomLogger* logger) {
-        this->logger = logger;
+    CommClass(bool* runProcess = 0, const char* ip="127.0.0.1", const char* port = "8081") {
+        this->ip = ip;
+        this->port = port;
+        this->runProcess = runProcess;
+    }
+    ~CommClass() {
+        this->close();
+        freeaddrinfo(result);
     }
 
     SOCKET sock = INVALID_SOCKET;
-    
-    int connectSocket(const char* ip, const char* port="8081") {
-        this->ip = ip;
-        this->port = port;
-        connectSocket();
-    }
 
     int connectSocket() {
         int ret;
          ret = WSAStartup(MAKEWORD(2, 2), &wsaData);
         if (ret != 0) {
-            logger->warn("WSA启动失败:{}", ret);
+            logger.warn("WSA启动失败:{}", ret);
             return ret;
         }
 
@@ -53,39 +54,39 @@ public:
 
         // Resolve the server address and port
         ret = getaddrinfo(ip, port, &hints, &result);
-        logger->info("连接至主程序");
+        logger.info("尝试连接至主程序");
         if (ret != 0) {
-            logger->warn("无法获取地址信息: {}",ret);
+            logger.warn("无法获取地址信息: {}",ret);
             this->close();
             return 1;
         }
 
-        // Attempt to connect to an address until one succeeds
         for (ptr = result; ptr != NULL; ptr = ptr->ai_next) {
-            // Create a SOCKET for connecting to server
             this->sock = socket(ptr->ai_family, ptr->ai_socktype,
                 ptr->ai_protocol);
             if (this->sock == INVALID_SOCKET) {
-                logger->warn("套字节出错:{}", WSAGetLastError());
+                logger.warn("套字节出错:{}", WSAGetLastError());
                 this->close();
                 return 1;
             }
 
-            // Connect to server.
             ret = connect(this->sock, ptr->ai_addr, (int)ptr->ai_addrlen);
             if (ret == SOCKET_ERROR) {
                 closesocket(this->sock);
+                logger.warn("套字节错误");
                 this->sock = INVALID_SOCKET;
                 continue;
             }
             if (this->sock == INVALID_SOCKET) {
-                logger->warn("无法连接至服务器");
+                logger.warn("无效套字节");
                 WSACleanup();
                 return 1;
             }
+            this->connected = true;
+            connectCallback();
             return 0;
         }
-        freeaddrinfo(result);
+        //freeaddrinfo(result);
         return 1;
     }
 
@@ -95,7 +96,7 @@ public:
         // Send an initial buffer
         ret = send(this->sock, (char*)message, (int)strlen(message), 0);
         if (ret == SOCKET_ERROR) {
-            logger->warn("发送信息失败: {}", WSAGetLastError());
+            logger.warn("发送信息失败: {}", WSAGetLastError());
             closesocket(this->sock);
             WSACleanup();
             return 1;
@@ -106,6 +107,21 @@ public:
     int waitMessage() {
         memset(recvbuf, 0, sizeof recvbuf);
         int ret = recv(this->sock,recvbuf ,256,0);
+        if (ret == 0) {
+            logger.warn("主机连接已断开");
+            connected = false;
+        }
+
+        while (!connected) {
+            Sleep(500);
+            if (runProcess) {
+                if (!(*runProcess)) { break; }
+            }
+            errCallback();
+            logger.warn("重新连接套字节中……");
+            this->connectSocket();
+        }
+        //initialize callback
         return ret;
     }
 
@@ -113,7 +129,7 @@ public:
         closesocket(this->sock);
         int ret = shutdown(this->sock, SD_SEND);
         if (ret == SOCKET_ERROR) {
-            logger->warn("无法关闭套字节: {}", WSAGetLastError());
+            logger.warn("无法关闭套字节: {}", WSAGetLastError());
             closesocket(this->sock);
             WSACleanup();
             return 1;
